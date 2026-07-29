@@ -8,9 +8,10 @@ pool:
 
 stages:
 
-# =========================
-# Stage 1 - Terraform Plan
-# =========================
+#=====================================================
+# Terraform Plan Stage
+#=====================================================
+
 - stage: TerraformPlan
   displayName: "Terraform Plan"
 
@@ -20,58 +21,74 @@ stages:
 
     steps:
 
+    - checkout: self
+
     - task: TerraformInstaller@1
       displayName: "Install Terraform"
       inputs:
         terraformVersion: "latest"
 
+    - script: |
+        echo "Repository Structure"
+        dir $(Build.SourcesDirectory)
+        echo "========================"
+        dir $(Build.SourcesDirectory)\parent_module
+      displayName: "Verify Repository"
+
     - task: TerraformTask@5
       displayName: "Terraform Init"
       inputs:
-        provider: "azurerm"
-        command: "init"
-        backendServiceArm: "dev-infra"
-        backendAzureRmResourceGroupName: "backend-rg"
-        backendAzureRmStorageAccountName: "backendtfstatestorage123"
-        backendAzureRmContainerName: "backendcontainer"
-        backendAzureRmKey: "tfstate"
+        provider: azurerm
+        command: init
+        workingDirectory: '$(Build.SourcesDirectory)/parent_module'
+        backendServiceArm: 'dev-infra'
+        backendAzureRmResourceGroupName: 'backend-rg'
+        backendAzureRmStorageAccountName: 'backendtfstatestorage123'
+        backendAzureRmContainerName: 'backendcontainer'
+        backendAzureRmKey: 'tfstate'
 
     - task: Gitleaks@3
       displayName: "Gitleaks Scan"
       inputs:
-        scanlocation: "$(Build.SourcesDirectory)"
-        configtype: "default"
-        reportformat: "sarif"
+        scanlocation: '$(Build.SourcesDirectory)'
+        configtype: 'default'
+        reportformat: 'sarif'
 
     - task: tfsec@1
-      displayName: "Terraform Security Scan"
+      displayName: "tfsec Scan"
       inputs:
         version: "v1.26.0"
 
     - task: TerraformTask@5
       displayName: "Terraform Validate"
       inputs:
-        provider: "azurerm"
-        command: "validate"
+        provider: azurerm
+        command: validate
+        workingDirectory: '$(Build.SourcesDirectory)/parent_module'
 
     - task: TerraformTask@5
       displayName: "Terraform Plan"
       inputs:
-        provider: "azurerm"
-        command: "plan"
-        environmentServiceNameAzureRM: "dev-infra"
-        environmentAzureRmOverrideSubscriptionID: "d4fb712a-aae3-49cf-8c1b-9ed8f8b11a56"
+        provider: azurerm
+        command: plan
+        workingDirectory: '$(Build.SourcesDirectory)/parent_module'
+        commandOptions: '-out=tfplan'
+        environmentServiceNameAzureRM: 'dev-infra'
 
-# =========================
-# Stage 2 - Terraform Apply
-# Manual Approval Required
-# =========================
+    - publish: $(Build.SourcesDirectory)/parent_module/tfplan
+      artifact: tfplan
+
+#=====================================================
+# Terraform Apply Stage
+#=====================================================
+
 - stage: TerraformApply
   displayName: "Terraform Apply"
   dependsOn: TerraformPlan
   condition: succeeded()
 
   jobs:
+
   - deployment: Apply
     displayName: "Terraform Apply Deployment"
 
@@ -80,9 +97,13 @@ stages:
     strategy:
       runOnce:
         deploy:
+
           steps:
 
           - checkout: self
+
+          - download: current
+            artifact: tfplan
 
           - task: TerraformInstaller@1
             displayName: "Install Terraform"
@@ -92,18 +113,20 @@ stages:
           - task: TerraformTask@5
             displayName: "Terraform Init"
             inputs:
-              provider: "azurerm"
-              command: "init"
-              backendServiceArm: "dev-infra"
-              backendAzureRmResourceGroupName: "backend-rg"
-              backendAzureRmStorageAccountName: "backendtfstatestorage123"
-              backendAzureRmContainerName: "backendcontainer"
-              backendAzureRmKey: "tfstate"
+              provider: azurerm
+              command: init
+              workingDirectory: '$(Build.SourcesDirectory)/parent_module'
+              backendServiceArm: 'dev-infra'
+              backendAzureRmResourceGroupName: 'backend-rg'
+              backendAzureRmStorageAccountName: 'backendtfstatestorage123'
+              backendAzureRmContainerName: 'backendcontainer'
+              backendAzureRmKey: 'tfstate'
 
           - task: TerraformTask@5
             displayName: "Terraform Apply"
             inputs:
-              provider: "azurerm"
-              command: "apply"
-              environmentServiceNameAzureRM: "dev-infra"
-              environmentAzureRmOverrideSubscriptionID: "d4fb712a-aae3-49cf-8c1b-9ed8f8b11a56"
+              provider: azurerm
+              command: apply
+              workingDirectory: '$(Build.SourcesDirectory)/parent_module'
+              commandOptions: 'tfplan'
+              environmentServiceNameAzureRM: 'dev-infra'
