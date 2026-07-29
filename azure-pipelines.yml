@@ -67,13 +67,13 @@ stages:
         workingDirectory: '$(Build.SourcesDirectory)/parent_module'
 
     - task: TerraformTask@5
-      displayName: "Terraform Plan"
+      displayName: Terraform Plan
       inputs:
-        provider: azurerm
-        command: plan
-        workingDirectory: '$(Build.SourcesDirectory)/parent_module'
-        commandOptions: '-out=tfplan'
-        environmentServiceNameAzureRM: 'dev-infra'
+       provider: azurerm
+       command: plan
+       workingDirectory: '$(Build.SourcesDirectory)/parent_module'
+       environmentServiceNameAzureRM: 'dev-infra'
+       commandOptions: '-var-file=terraform.tfvars -out=tfplan'
 
     - publish: $(Build.SourcesDirectory)/parent_module/tfplan
       artifact: tfplan
