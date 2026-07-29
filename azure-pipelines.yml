@@ -6,11 +6,12 @@ trigger:
 pool:
   name: infra-pool
 
+
 stages:
 
-#=====================================================
+# ==========================================
 # Terraform Plan Stage
-#=====================================================
+# ==========================================
 
 - stage: TerraformPlan
   displayName: "Terraform Plan"
@@ -23,110 +24,130 @@ stages:
 
     - checkout: self
 
+
     - task: TerraformInstaller@1
       displayName: "Install Terraform"
       inputs:
         terraformVersion: "latest"
 
-    - script: |
-        echo "Repository Structure"
-        dir $(Build.SourcesDirectory)
-        echo "========================"
-        dir $(Build.SourcesDirectory)\parent_module
-      displayName: "Verify Repository"
 
     - task: TerraformTask@5
       displayName: "Terraform Init"
       inputs:
-        provider: azurerm
-        command: init
-        workingDirectory: '$(Build.SourcesDirectory)/parent_module'
-        backendServiceArm: 'dev-infra'
-        backendAzureRmResourceGroupName: 'backend-rg'
-        backendAzureRmStorageAccountName: 'backendtfstatestorage123'
-        backendAzureRmContainerName: 'backendcontainer'
-        backendAzureRmKey: 'tfstate'
+        provider: "azurerm"
+        command: "init"
+        workingDirectory: "$(Build.SourcesDirectory)/parent_module"
+        backendServiceArm: "dev-infra"
+        backendAzureRmResourceGroupName: "backend-rg"
+        backendAzureRmStorageAccountName: "backendtfstatestorage123"
+        backendAzureRmContainerName: "backendcontainer"
+        backendAzureRmKey: "tfstate"
+
 
     - task: Gitleaks@3
       displayName: "Gitleaks Scan"
       inputs:
-        scanlocation: '$(Build.SourcesDirectory)'
-        configtype: 'default'
-        reportformat: 'sarif'
+        scanlocation: "$(Build.SourcesDirectory)"
+        configtype: "default"
+        reportformat: "sarif"
+
 
     - task: tfsec@1
       displayName: "tfsec Scan"
       inputs:
         version: "v1.26.0"
 
+
     - task: TerraformTask@5
       displayName: "Terraform Validate"
       inputs:
-        provider: azurerm
-        command: validate
-        workingDirectory: '$(Build.SourcesDirectory)/parent_module'
+        provider: "azurerm"
+        command: "validate"
+        workingDirectory: "$(Build.SourcesDirectory)/parent_module"
+
 
     - task: TerraformTask@5
-      displayName: Terraform Plan
+      displayName: "Terraform Plan"
       inputs:
-       provider: azurerm
-       command: plan
-       workingDirectory: '$(Build.SourcesDirectory)/parent_module'
-       environmentServiceNameAzureRM: 'dev-infra'
-       commandOptions: '-var-file=terraform.tfvars -out=tfplan'
+        provider: "azurerm"
+        command: "plan"
+        workingDirectory: "$(Build.SourcesDirectory)/parent_module"
+        environmentServiceNameAzureRM: "dev-infra"
+        commandOptions: "-var-file=terraform.tfvars -out=tfplan"
 
-    - publish: $(Build.SourcesDirectory)/parent_module/tfplan
-      artifact: tfplan
 
-#=====================================================
-# Terraform Apply Stage
-#=====================================================
+    - publish: "$(Build.SourcesDirectory)/parent_module/tfplan"
+      artifact: "tfplan"
+
+
+
+# ==========================================
+# Terraform Apply Stage (Auto Apply)
+# ==========================================
 
 - stage: TerraformApply
   displayName: "Terraform Apply"
+
   dependsOn: TerraformPlan
+
   condition: succeeded()
+
 
   jobs:
 
-  - deployment: Apply
-    displayName: "Terraform Apply Deployment"
+  - job: Apply
+    displayName: "Terraform Apply Job"
 
-    environment: "prod"
+    steps:
 
-    strategy:
-      runOnce:
-        deploy:
 
-          steps:
+    - checkout: self
 
-          - checkout: self
 
-          - download: current
-            artifact: tfplan
+    - download: current
+      artifact: tfplan
 
-          - task: TerraformInstaller@1
-            displayName: "Install Terraform"
-            inputs:
-              terraformVersion: "latest"
 
-          - task: TerraformTask@5
-            displayName: "Terraform Init"
-            inputs:
-              provider: azurerm
-              command: init
-              workingDirectory: '$(Build.SourcesDirectory)/parent_module'
-              backendServiceArm: 'dev-infra'
-              backendAzureRmResourceGroupName: 'backend-rg'
-              backendAzureRmStorageAccountName: 'backendtfstatestorage123'
-              backendAzureRmContainerName: 'backendcontainer'
-              backendAzureRmKey: 'tfstate'
+    - script: |
+        echo "Restoring Terraform Plan"
 
-          - task: TerraformTask@5
-            displayName: "Terraform Apply"
-            inputs:
-              provider: azurerm
-              command: apply
-              workingDirectory: '$(Build.SourcesDirectory)/parent_module'
-              commandOptions: 'tfplan'
-              environmentServiceNameAzureRM: 'dev-infra'
+        copy $(Pipeline.Workspace)\tfplan\tfplan $(Build.SourcesDirectory)\parent_module\tfplan
+
+        dir $(Build.SourcesDirectory)\parent_module
+
+      displayName: "Restore tfplan"
+
+
+
+    - task: TerraformInstaller@1
+      displayName: "Install Terraform"
+
+      inputs:
+        terraformVersion: "latest"
+
+
+
+    - task: TerraformTask@5
+      displayName: "Terraform Init"
+
+      inputs:
+        provider: "azurerm"
+        command: "init"
+        workingDirectory: "$(Build.SourcesDirectory)/parent_module"
+        backendServiceArm: "dev-infra"
+        backendAzureRmResourceGroupName: "backend-rg"
+        backendAzureRmStorageAccountName: "backendtfstatestorage123"
+        backendAzureRmContainerName: "backendcontainer"
+        backendAzureRmKey: "tfstate"
+
+
+
+    - task: TerraformTask@5
+      displayName: "Terraform Apply"
+
+      inputs:
+        provider: "azurerm"
+        command: "apply"
+        workingDirectory: "$(Build.SourcesDirectory)/parent_module"
+        commandOptions: "tfplan"
+        environmentServiceNameAzureRM: "dev-infra"
